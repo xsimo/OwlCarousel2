@@ -1,6 +1,6 @@
 /**
  * Owl Carousel v2.3.4
- * Copyright 2013-2018 David Deutsch
+ * Copyright 2013-2019 David Deutsch
  * Licensed under: SEE LICENSE IN https://github.com/OwlCarousel2/OwlCarousel2/blob/master/LICENSE
  */
 /**
@@ -340,16 +340,12 @@
 			while (repeat > 0) {
 				// Switch to only using appended clones
 				clones.push(this.normalize(clones.length / 2, true));
-				append = append + items[clones[clones.length - 1]][0].outerHTML;
+				$(items[clones[clones.length - 1]][0]).clone(true).addClass('cloned').appendTo(this.$stage);
 				clones.push(this.normalize(items.length - 1 - (clones.length - 1) / 2, true));
-				prepend = items[clones[clones.length - 1]][0].outerHTML + prepend;
+				$(items[clones[clones.length - 1]][0]).clone(true).addClass('cloned').prependTo(this.$stage);
 				repeat -= 1;
 			}
-
 			this._clones = clones;
-
-			$(append).addClass('cloned').appendTo(this.$stage);
-			$(prepend).addClass('cloned').prependTo(this.$stage);
 		}
 	}, {
 		filter: [ 'width', 'items', 'settings' ],
@@ -664,7 +660,9 @@
 	 * Refreshes the carousel primarily for adaptive purposes.
 	 * @public
 	 */
-	Owl.prototype.refresh = function() {
+	Owl.prototype.refresh = function(resizing) {
+		resizing = resizing || false;
+
 		this.enter('refreshing');
 		this.trigger('refresh');
 
@@ -675,6 +673,10 @@
 		this.$element.addClass(this.options.refreshClass);
 
 		this.update();
+
+		if (!resizing) {
+			this.onResize();
+		}
 
 		this.$element.removeClass(this.options.refreshClass);
 
@@ -696,6 +698,8 @@
 	 * @protected
 	 */
 	Owl.prototype.onResize = function() {
+		var resizing = true;
+
 		if (!this._items.length) {
 			return false;
 		}
@@ -717,7 +721,7 @@
 
 		this.invalidate('width');
 
-		this.refresh();
+		this.refresh(resizing);
 
 		this.leave('resizing');
 		this.trigger('resized');
@@ -896,7 +900,9 @@
 	Owl.prototype.closest = function(coordinate, direction) {
 		var position = -1,
 			pull = 30,
-			width = this.width(),
+			width = this.width(), // visible carousel width
+			count = this.settings.items,
+			itemWidth = Math.round(width / count),
 			coordinates = this.coordinates();
 
 		if (!this.settings.freeDrag) {
@@ -907,7 +913,7 @@
 					position = index;
 				// on a right pull, check on previous index
 				// to do so, subtract width from value and set position = index + 1
-				} else if (direction === 'right' && coordinate > value - width - pull && coordinate < value - width + pull) {
+				} else if (direction === 'right' && coordinate > value - itemWidth - pull && coordinate < value - itemWidth + pull) {
 					position = index + 1;
 				} else if (this.op(coordinate, '<', value)
 					&& this.op(coordinate, '>', coordinates[index + 1] !== undefined ? coordinates[index + 1] : value - width)) {
@@ -1443,7 +1449,7 @@
 				element.css('opacity', 1);
 				this.leave('pre-loading');
 				!this.is('pre-loading') && !this.is('initializing') && this.refresh();
-			}, this)).attr('src', element.attr('src') || element.attr('data-src') || element.attr('data-src-retina'));
+			}, this)).attr('src', (window.devicePixelRatio > 1) ? element.attr('data-src-retina') : element.attr('data-src') || element.attr('src'));
 		}, this));
 	};
 
@@ -1911,14 +1917,14 @@
 					return;
 				}
 
-				if ((e.property && e.property.name == 'position') || e.type == 'initialized') {
+				if ((e.property && e.property.name === 'position') || e.type === 'initialized' || e.type === 'resized') {
 					var settings = this._core.settings,
 						n = (settings.center && Math.ceil(settings.items / 2) || settings.items),
 						i = ((settings.center && n * -1) || 0),
 						position = (e.property && e.property.value !== undefined ? e.property.value : this._core.current()) + i,
 						clones = this._core.clones().length,
 						load = $.proxy(function(i, v) { this.load(v) }, this);
-					//TODO: Need documentation for this new option
+
 					if (settings.lazyLoadEager > 0) {
 						n += settings.lazyLoadEager;
 						// If the carousel is looping also preload images that are to the "left"
@@ -1927,6 +1933,11 @@
               n++;
             }
 					}
+
+          if (!settings.center && settings.stagePadding) {
+						position--;
+						n += 2;
+          }
 
 					while (i++ < n) {
 						this.load(clones / 2 + this._core.relative(position));
@@ -2511,7 +2522,7 @@
 				}
 			}, this),
 			'translate.owl.carousel': $.proxy(function(e) {
-				if (e.namespace && this.swapping && (this.core.options.animateOut || this.core.options.animateIn)) {
+				if (e.namespace && this.swapping && (this.core.options.animateOut || this.core.options.animateIn || this.core.options.backAnimateIn || this.core.options.backAnimateOut)) {
 					this.swap();
 				}
 			}, this)
@@ -2526,7 +2537,9 @@
 	 */
 	Animate.Defaults = {
 		animateOut: false,
-		animateIn: false
+		animateIn: false,
+		backAnimateIn: false,
+		backAnimateOut: false,
 	};
 
 	/**
@@ -2546,12 +2559,16 @@
 
 		this.core.speed(0);
 
+		// use forward animate classes if backward animations are not defined
+		this.core.settings.backAnimateIn = this.core.settings.backAnimateIn ? this.core.settings.backAnimateIn : this.core.settings.animateIn;
+		this.core.settings.backAnimateOut = this.core.settings.backAnimateOut ? this.core.settings.backAnimateOut : this.core.settings.animateOut;
+
 		var left,
 			clear = $.proxy(this.clear, this),
 			previous = this.core.$stage.children().eq(this.previous),
 			next = this.core.$stage.children().eq(this.next),
-			incoming = this.core.settings.animateIn,
-			outgoing = this.core.settings.animateOut;
+			incoming = this.next > this.previous ? this.core.settings.animateIn : this.core.settings.backAnimateIn,
+			outgoing = this.next > this.previous ? this.core.settings.animateOut : this.core.settings.backAnimateOut;
 
 		if (this.core.current() === this.previous) {
 			return;
@@ -2576,6 +2593,8 @@
 		$(e.target).css( { 'left': '' } )
 			.removeClass('animated owl-animated-out owl-animated-in')
 			.removeClass(this.core.settings.animateIn)
+			.removeClass(this.core.settings.backAnimateIn)
+			.removeClass(this.core.settings.backAnimateOut)
 			.removeClass(this.core.settings.animateOut);
 		this.core.onTransitionEnd();
 	};
