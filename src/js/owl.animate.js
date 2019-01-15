@@ -68,11 +68,11 @@
 		}
 
 		this.core.speed(0);
-		
+
 		// use forward animate classes if backward animations are not defined
 		this.core.settings.backAnimateIn = this.core.settings.backAnimateIn ? this.core.settings.backAnimateIn : this.core.settings.animateIn;
 		this.core.settings.backAnimateOut = this.core.settings.backAnimateOut ? this.core.settings.backAnimateOut : this.core.settings.animateOut;
-		
+
 		var left,
 			clear = $.proxy(this.clear, this),
 			previous = this.core.$stage.children().eq(this.previous),
@@ -83,7 +83,7 @@
 		if (this.core.current() === this.previous) {
 			return;
 		}
-		
+
 		if (outgoing) {
 			left = this.core.coordinates(this.previous) - this.core.coordinates(this.next);
 			previous.one($.support.animation.end, clear)
